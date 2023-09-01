@@ -27,7 +27,10 @@ public final class StartupHandler
   public static void HandleInit(FragmentActivity parent)
   {
     // Ask the user if he wants to enable analytics if we haven't yet.
-    Analytics.checkAnalyticsInit(parent);
+    if (!VirtualReality.isActive())
+    {
+      Analytics.checkAnalyticsInit(parent);
+    }
 
     // Set up and/or sync Android TV channels
     if (TvUtil.isLeanback(parent))
@@ -36,8 +39,33 @@ public final class StartupHandler
     String[] gamesToLaunch = getGamesFromIntent(parent.getIntent());
     if (gamesToLaunch != null && gamesToLaunch.length > 0)
     {
+      // If legacy path then ensure permissions are granted, the game will open on the next attempt
+      if (gamesToLaunch[0].startsWith("/") && !PermissionsHandler.hasWriteAccess(parent))
+      {
+        PermissionsHandler.requestWritePermission(parent);
+        parent.finish();
+        return;
+      }
+
+      // Restore settings from the main app into VR app dir.
+      if (VirtualReality.isActive())
+      {
+        Bundle extras = parent.getIntent().getExtras();
+        if (extras != null)
+        {
+          VirtualReality.restoreConfig(parent, extras);
+        }
+      }
+
       // Start the emulation activity, send the ISO passed in and finish the main activity
       EmulationActivity.launch(parent, gamesToLaunch, false);
+      if (!VirtualReality.isActive())
+      {
+        parent.finish();
+      }
+    }
+    else if (VirtualReality.isActive())
+    {
       parent.finish();
     }
   }

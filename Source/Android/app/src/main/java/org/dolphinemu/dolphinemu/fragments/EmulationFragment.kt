@@ -4,6 +4,7 @@ package org.dolphinemu.dolphinemu.fragments
 
 import android.content.Context
 import android.graphics.Rect
+import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.SurfaceHolder
@@ -17,6 +18,7 @@ import org.dolphinemu.dolphinemu.features.settings.model.BooleanSetting
 import org.dolphinemu.dolphinemu.features.settings.model.Settings
 import org.dolphinemu.dolphinemu.overlay.InputOverlay
 import org.dolphinemu.dolphinemu.utils.Log
+import org.dolphinemu.dolphinemu.utils.VirtualReality
 import java.io.File
 
 class EmulationFragment : Fragment(), SurfaceHolder.Callback {
@@ -148,6 +150,12 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
         NativeLibrary.SurfaceChanged(holder.surface)
         if (runWhenSurfaceIsValid) {
             runWithValidSurface()
+        }
+
+        // Initialize or update OpenXR flow.
+        if (VirtualReality.isActive()) {
+            NativeLibrary.InitializeVR(NativeLibrary.getEmulationActivity(), Build.MANUFACTURER)
+            VirtualReality.setInitialized()
         }
     }
 

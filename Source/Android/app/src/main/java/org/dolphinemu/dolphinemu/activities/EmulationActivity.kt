@@ -2,7 +2,6 @@
 
 package org.dolphinemu.dolphinemu.activities
 
-import android.annotation.SuppressLint
 import android.content.DialogInterface
 import android.content.Intent
 import android.graphics.Rect
@@ -58,6 +57,7 @@ import org.dolphinemu.dolphinemu.ui.main.ThemeProvider
 import org.dolphinemu.dolphinemu.utils.AfterDirectoryInitializationRunner
 import org.dolphinemu.dolphinemu.utils.FileBrowserHelper
 import org.dolphinemu.dolphinemu.utils.ThemeHelper
+import org.dolphinemu.dolphinemu.utils.VirtualReality
 import kotlin.math.roundToInt
 
 class EmulationActivity : AppCompatActivity(), ThemeProvider {
@@ -247,6 +247,9 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
     override fun onDestroy() {
         super.onDestroy()
         settings.close()
+        if (VirtualReality.isActive()) {
+           System.exit(0)
+        }
     }
 
     override fun onBackPressed() {
@@ -1082,11 +1085,17 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
             filePaths: Array<String>,
             riivolution: Boolean
         ) {
-            ignoreLaunchRequests = true
-            val launcher = Intent(activity, EmulationActivity::class.java)
-            launcher.putExtra(EXTRA_SELECTED_GAMES, filePaths)
-            launcher.putExtra(EXTRA_RIIVOLUTION, riivolution)
-            activity.startActivity(launcher)
+            if (VirtualReality.isInstalled(activity) && !VirtualReality.isActive()) {
+                VirtualReality.openIntent(activity, filePaths)
+            } else {
+                if (!VirtualReality.isActive()) {
+                      EmulationActivity.ignoreLaunchRequests = true
+                }
+                val launcher = Intent(activity, EmulationActivity::class.java)
+                launcher.putExtra(EXTRA_SELECTED_GAMES, filePaths)
+                launcher.putExtra(EXTRA_RIIVOLUTION, riivolution)
+                activity.startActivity(launcher)
+          }
         }
 
         private fun performLaunchChecks(activity: FragmentActivity, continueCallback: Runnable) {
