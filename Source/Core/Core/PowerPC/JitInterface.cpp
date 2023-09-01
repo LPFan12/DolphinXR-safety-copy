@@ -59,22 +59,20 @@ void JitInterface::DoState(PointerWrap& p)
 
 CPUCoreBase* JitInterface::InitJitCore(PowerPC::CPUCore core)
 {
-  auto& system = Core::System::GetInstance();
-
   switch (core)
   {
 #if _M_X86
   case PowerPC::CPUCore::JIT64:
-    m_jit = std::make_unique<Jit64>(system);
+    m_jit = std::make_unique<Jit64>(m_system);
     break;
 #endif
 #if _M_ARM_64
   case PowerPC::CPUCore::JITARM64:
-    m_jit = std::make_unique<JitArm64>(system);
+    m_jit = std::make_unique<JitArm64>(m_system);
     break;
 #endif
   case PowerPC::CPUCore::CachedInterpreter:
-    m_jit = std::make_unique<CachedInterpreter>(system);
+    m_jit = std::make_unique<CachedInterpreter>(m_system);
     break;
 
   default:
@@ -98,6 +96,25 @@ void JitInterface::SetProfilingState(ProfilingState state)
     return;
 
   m_jit->jo.profile_blocks = state == ProfilingState::Enabled;
+}
+
+void JitInterface::UpdateMembase()
+{
+  if (!m_jit)
+    return;
+
+  auto& ppc_state = m_system.GetPPCState();
+  auto& memory = m_system.GetMemory();
+  if (ppc_state.msr.DR)
+  {
+    ppc_state.mem_ptr =
+        m_jit->jo.fastmem_arena ? memory.GetLogicalBase() : memory.GetLogicalPageMappingsBase();
+  }
+  else
+  {
+    ppc_state.mem_ptr =
+        m_jit->jo.fastmem_arena ? memory.GetPhysicalBase() : memory.GetPhysicalPageMappingsBase();
+  }
 }
 
 void JitInterface::WriteProfileResults(const std::string& filename) const
@@ -189,7 +206,7 @@ JitInterface::GetHostCode(u32 address) const
   }
 
   GetHostCodeResult result;
-  result.code = block->checkedEntry;
+  result.code = block->normalEntry;
   result.code_size = block->codeSize;
   result.entry_address = block->effectiveAddress;
   return result;

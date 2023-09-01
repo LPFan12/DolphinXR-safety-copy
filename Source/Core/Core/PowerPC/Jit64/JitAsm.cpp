@@ -20,6 +20,10 @@
 
 using namespace Gen;
 
+// These need to be next of each other so that the assembly
+// code can compare them easily.
+static_assert(offsetof(JitBlockData, effectiveAddress) + 4 == offsetof(JitBlockData, msrBits));
+
 Jit64AsmRoutineManager::Jit64AsmRoutineManager(Jit64& jit) : CommonAsmRoutines(jit)
 {
 }
@@ -60,7 +64,15 @@ void Jit64AsmRoutineManager::Generate()
   ABI_PushRegistersAndAdjustStack({}, 0);
   ABI_CallFunction(CoreTiming::GlobalAdvance);
   ABI_PopRegistersAndAdjustStack({}, 0);
-  FixupBranch skipToRealDispatch = J(enable_debugging);  // skip the sync and compare first time
+
+  // When we've just entered the jit we need to update the membase
+  // GlobalAdvance also checks exceptions after which we need to
+  // update the membase so it makes sense to do this here.
+  MOV(64, R(RMEM), PPCSTATE(mem_ptr));
+
+  // skip the sync and compare first time
+  FixupBranch skipToRealDispatch = J(enable_debugging ? Jump::Near : Jump::Short);
+
   dispatcher_mispredicted_blr = GetCodePtr();
   AND(32, PPCSTATE(pc), Imm32(0xFFFFFFFC));
 
@@ -79,7 +91,7 @@ void Jit64AsmRoutineManager::Generate()
 
   // Expected result of SUB(32, PPCSTATE(downcount), Imm32(block_cycles)) is in RFLAGS.
   // Branch if downcount is <= 0 (signed).
-  FixupBranch bail = J_CC(CC_LE, true);
+  FixupBranch bail = J_CC(CC_LE, Jump::Near);
 
   dispatcher_no_timing_check = GetCodePtr();
 
@@ -90,58 +102,72 @@ void Jit64AsmRoutineManager::Generate()
   {
     MOV(64, R(RSCRATCH), ImmPtr(system.GetCPU().GetStatePtr()));
     TEST(32, MatR(RSCRATCH), Imm32(0xFFFFFFFF));
-    dbg_exit = J_CC(CC_NZ, true);
+    dbg_exit = J_CC(CC_NZ, Jump::Near);
   }
 
   SetJumpTarget(skipToRealDispatch);
 
   dispatcher_no_check = GetCodePtr();
 
-  auto& memory = system.GetMemory();
-
   // The following is a translation of JitBaseBlockCache::Dispatch into assembly.
   const bool assembly_dispatcher = true;
   if (assembly_dispatcher)
   {
-    // Fast block number lookup.
-    // ((PC >> 2) & mask) * sizeof(JitBlock*) = (PC & (mask << 2)) * 2
-    MOV(32, R(RSCRATCH), PPCSTATE(pc));
-    // Keep a copy for later.
-    MOV(32, R(RSCRATCH_EXTRA), R(RSCRATCH));
-    u64 icache = reinterpret_cast<u64>(m_jit.GetBlockCache()->GetFastBlockMap());
-    AND(32, R(RSCRATCH), Imm32(JitBaseBlockCache::FAST_BLOCK_MAP_MASK << 2));
-    if (icache <= INT_MAX)
+    if (m_jit.GetBlockCache()->GetFastBlockMap())
     {
-      MOV(64, R(RSCRATCH), MScaled(RSCRATCH, SCALE_2, static_cast<s32>(icache)));
+      u64 icache = reinterpret_cast<u64>(m_jit.GetBlockCache()->GetFastBlockMap());
+      MOV(32, R(RSCRATCH), PPCSTATE(pc));
+
+      MOV(64, R(RSCRATCH2), Imm64(icache));
+      // Each 4-byte offset of the PC register corresponds to a 8-byte offset
+      // in the lookup table due to host pointers being 8-bytes long.
+      MOV(64, R(RSCRATCH), MComplex(RSCRATCH2, RSCRATCH, SCALE_2, 0));
     }
     else
     {
-      MOV(64, R(RSCRATCH2), Imm64(icache));
-      MOV(64, R(RSCRATCH), MComplex(RSCRATCH2, RSCRATCH, SCALE_2, 0));
+      // Fast block number lookup.
+      // ((PC >> 2) & mask) * sizeof(JitBlock*) = (PC & (mask << 2)) * 2
+      MOV(32, R(RSCRATCH), PPCSTATE(pc));
+      // Keep a copy for later.
+      MOV(32, R(RSCRATCH_EXTRA), R(RSCRATCH));
+      u64 icache = reinterpret_cast<u64>(m_jit.GetBlockCache()->GetFastBlockMapFallback());
+      AND(32, R(RSCRATCH), Imm32(JitBaseBlockCache::FAST_BLOCK_MAP_FALLBACK_MASK << 2));
+      if (icache <= INT_MAX)
+      {
+        MOV(64, R(RSCRATCH), MScaled(RSCRATCH, SCALE_2, static_cast<s32>(icache)));
+      }
+      else
+      {
+        MOV(64, R(RSCRATCH2), Imm64(icache));
+        MOV(64, R(RSCRATCH), MComplex(RSCRATCH2, RSCRATCH, SCALE_2, 0));
+      }
     }
 
     // Check if we found a block.
     TEST(64, R(RSCRATCH), R(RSCRATCH));
     FixupBranch not_found = J_CC(CC_Z);
 
-    // Check both block.effectiveAddress and block.msrBits.
+    // Check block.msrBits.
     MOV(32, R(RSCRATCH2), PPCSTATE(msr));
     AND(32, R(RSCRATCH2), Imm32(JitBaseBlockCache::JIT_CACHE_MSR_MASK));
-    SHL(64, R(RSCRATCH2), Imm8(32));
-    // RSCRATCH_EXTRA still has the PC.
-    OR(64, R(RSCRATCH2), R(RSCRATCH_EXTRA));
-    CMP(64, R(RSCRATCH2),
-        MDisp(RSCRATCH, static_cast<s32>(offsetof(JitBlockData, effectiveAddress))));
+
+    if (m_jit.GetBlockCache()->GetFastBlockMap())
+    {
+      CMP(32, R(RSCRATCH2), MDisp(RSCRATCH, static_cast<s32>(offsetof(JitBlockData, msrBits))));
+    }
+    else
+    {
+      // Also check the block.effectiveAddress
+      SHL(64, R(RSCRATCH2), Imm8(32));
+      // RSCRATCH_EXTRA still has the PC.
+      OR(64, R(RSCRATCH2), R(RSCRATCH_EXTRA));
+      CMP(64, R(RSCRATCH2),
+          MDisp(RSCRATCH, static_cast<s32>(offsetof(JitBlockData, effectiveAddress))));
+    }
+
     FixupBranch state_mismatch = J_CC(CC_NE);
 
     // Success; branch to the block we found.
-    // Switch to the correct memory base, in case MSR.DR has changed.
-    TEST(32, PPCSTATE(msr), Imm32(1 << (31 - 27)));
-    FixupBranch physmem = J_CC(CC_Z);
-    MOV(64, R(RMEM), ImmPtr(memory.GetLogicalBase()));
-    JMPptr(MDisp(RSCRATCH, static_cast<s32>(offsetof(JitBlockData, normalEntry))));
-    SetJumpTarget(physmem);
-    MOV(64, R(RMEM), ImmPtr(memory.GetPhysicalBase()));
     JMPptr(MDisp(RSCRATCH, static_cast<s32>(offsetof(JitBlockData, normalEntry))));
 
     SetJumpTarget(not_found);
@@ -159,13 +185,7 @@ void Jit64AsmRoutineManager::Generate()
   TEST(64, R(ABI_RETURN), R(ABI_RETURN));
   FixupBranch no_block_available = J_CC(CC_Z);
 
-  // Switch to the correct memory base, in case MSR.DR has changed.
-  TEST(32, PPCSTATE(msr), Imm32(1 << (31 - 27)));
-  FixupBranch physmem = J_CC(CC_Z);
-  MOV(64, R(RMEM), ImmPtr(memory.GetLogicalBase()));
-  JMPptr(R(ABI_RETURN));
-  SetJumpTarget(physmem);
-  MOV(64, R(RMEM), ImmPtr(memory.GetPhysicalBase()));
+  // Jump to the block
   JMPptr(R(ABI_RETURN));
 
   SetJumpTarget(no_block_available);
@@ -182,7 +202,7 @@ void Jit64AsmRoutineManager::Generate()
   ABI_CallFunction(JitTrampoline);
   ABI_PopRegistersAndAdjustStack({}, 0);
 
-  JMP(dispatcher_no_check, true);
+  JMP(dispatcher_no_check, Jump::Near);
 
   SetJumpTarget(bail);
   do_timing = GetCodePtr();
@@ -209,7 +229,7 @@ void Jit64AsmRoutineManager::Generate()
   ABI_PopRegistersAndAdjustStack(ABI_ALL_CALLEE_SAVED, 8, 16);
   RET();
 
-  JitRegister::Register(enter_code, GetCodePtr(), "JIT_Loop");
+  Common::JitRegister::Register(enter_code, GetCodePtr(), "JIT_Loop");
 
   GenerateCommon();
 }

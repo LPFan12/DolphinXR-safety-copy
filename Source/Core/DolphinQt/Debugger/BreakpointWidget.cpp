@@ -22,6 +22,7 @@
 
 #include "DolphinQt/Debugger/BreakpointDialog.h"
 #include "DolphinQt/Debugger/MemoryWidget.h"
+#include "DolphinQt/QtUtils/SetWindowDecorations.h"
 #include "DolphinQt/Resources.h"
 #include "DolphinQt/Settings.h"
 
@@ -126,11 +127,11 @@ void BreakpointWidget::CreateWidgets()
 
 void BreakpointWidget::UpdateIcons()
 {
-  m_new->setIcon(Resources::GetScaledThemeIcon("debugger_add_breakpoint"));
-  m_delete->setIcon(Resources::GetScaledThemeIcon("debugger_delete"));
-  m_clear->setIcon(Resources::GetScaledThemeIcon("debugger_clear"));
-  m_load->setIcon(Resources::GetScaledThemeIcon("debugger_load"));
-  m_save->setIcon(Resources::GetScaledThemeIcon("debugger_save"));
+  m_new->setIcon(Resources::GetThemeIcon("debugger_add_breakpoint"));
+  m_delete->setIcon(Resources::GetThemeIcon("debugger_delete"));
+  m_clear->setIcon(Resources::GetThemeIcon("debugger_clear"));
+  m_load->setIcon(Resources::GetThemeIcon("debugger_load"));
+  m_save->setIcon(Resources::GetThemeIcon("debugger_save"));
 }
 
 void BreakpointWidget::closeEvent(QCloseEvent*)
@@ -168,7 +169,7 @@ void BreakpointWidget::Update()
   int i = 0;
   m_table->setRowCount(i);
 
-  const auto create_item = [](const QString string = {}) {
+  const auto create_item = [](const QString& string = {}) {
     QTableWidgetItem* item = new QTableWidgetItem(string);
     item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
     return item;
@@ -313,6 +314,7 @@ void BreakpointWidget::OnClear()
 void BreakpointWidget::OnNewBreakpoint()
 {
   BreakpointDialog* dialog = new BreakpointDialog(this);
+  SetQWidgetWindowDecorations(dialog);
   dialog->exec();
 }
 
@@ -322,12 +324,14 @@ void BreakpointWidget::OnEditBreakpoint(u32 address, bool is_instruction_bp)
   {
     auto* dialog =
         new BreakpointDialog(this, m_system.GetPowerPC().GetBreakPoints().GetBreakpoint(address));
+    SetQWidgetWindowDecorations(dialog);
     dialog->exec();
   }
   else
   {
     auto* dialog =
         new BreakpointDialog(this, m_system.GetPowerPC().GetMemChecks().GetMemCheck(address));
+    SetQWidgetWindowDecorations(dialog);
     dialog->exec();
   }
 

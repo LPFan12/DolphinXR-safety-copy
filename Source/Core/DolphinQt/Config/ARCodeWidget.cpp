@@ -3,6 +3,7 @@
 
 #include "DolphinQt/Config/ARCodeWidget.h"
 
+#include <algorithm>
 #include <utility>
 
 #include <QCursor>
@@ -21,6 +22,7 @@
 #include "DolphinQt/Config/CheatCodeEditor.h"
 #include "DolphinQt/Config/CheatWarningWidget.h"
 #include "DolphinQt/QtUtils/NonDefaultQPushButton.h"
+#include "DolphinQt/QtUtils/SetWindowDecorations.h"
 
 #include "UICommon/GameFile.h"
 
@@ -113,6 +115,8 @@ void ARCodeWidget::OnContextMenuRequested()
   QMenu menu;
 
   menu.addAction(tr("Sort Alphabetically"), this, &ARCodeWidget::SortAlphabetically);
+  menu.addAction(tr("Show Enabled Codes First"), this, &ARCodeWidget::SortEnabledCodesFirst);
+  menu.addAction(tr("Show Disabled Codes First"), this, &ARCodeWidget::SortDisabledCodesFirst);
 
   menu.exec(QCursor::pos());
 }
@@ -121,6 +125,26 @@ void ARCodeWidget::SortAlphabetically()
 {
   m_code_list->sortItems();
   OnListReordered();
+}
+
+void ARCodeWidget::SortEnabledCodesFirst()
+{
+  std::stable_sort(m_ar_codes.begin(), m_ar_codes.end(), [](const auto& a, const auto& b) {
+    return a.enabled && a.enabled != b.enabled;
+  });
+
+  UpdateList();
+  SaveCodes();
+}
+
+void ARCodeWidget::SortDisabledCodesFirst()
+{
+  std::stable_sort(m_ar_codes.begin(), m_ar_codes.end(), [](const auto& a, const auto& b) {
+    return !a.enabled && a.enabled != b.enabled;
+  });
+
+  UpdateList();
+  SaveCodes();
 }
 
 void ARCodeWidget::OnListReordered()
@@ -207,6 +231,7 @@ void ARCodeWidget::OnCodeAddClicked()
 
   CheatCodeEditor ed(this);
   ed.SetARCode(&ar);
+  SetQWidgetWindowDecorations(&ed);
   if (ed.exec() == QDialog::Rejected)
     return;
 
@@ -230,6 +255,7 @@ void ARCodeWidget::OnCodeEditClicked()
   {
     ed.SetARCode(&current_ar);
 
+    SetQWidgetWindowDecorations(&ed);
     if (ed.exec() == QDialog::Rejected)
       return;
   }
@@ -238,6 +264,7 @@ void ARCodeWidget::OnCodeEditClicked()
     ActionReplay::ARCode ar = current_ar;
     ed.SetARCode(&ar);
 
+    SetQWidgetWindowDecorations(&ed);
     if (ed.exec() == QDialog::Rejected)
       return;
 

@@ -3,26 +3,26 @@
 
 #pragma once
 
-#include "DolphinQt/Config/Graphics/GraphicsWidget.h"
+#include <QWidget>
 
 class ConfigBool;
-class GraphicsChoice;
-class GraphicsInteger;
+class ConfigChoice;
+class ConfigInteger;
 class GraphicsWindow;
 class QCheckBox;
 class QComboBox;
 class QSpinBox;
 class ToolTipCheckBox;
 
-class AdvancedWidget final : public GraphicsWidget
+class AdvancedWidget final : public QWidget
 {
   Q_OBJECT
 public:
   explicit AdvancedWidget(GraphicsWindow* parent);
 
 private:
-  void LoadSettings() override;
-  void SaveSettings() override;
+  void LoadSettings();
+  void SaveSettings();
 
   void CreateWidgets();
   void ConnectWidgets();
@@ -42,7 +42,7 @@ private:
   ConfigBool* m_show_graphs;
   ConfigBool* m_show_speed;
   ConfigBool* m_show_speed_colors;
-  GraphicsInteger* m_perf_samp_window;
+  ConfigInteger* m_perf_samp_window;
   ConfigBool* m_log_render_time;
 
   // Utility
@@ -61,8 +61,8 @@ private:
   // Frame dumping
   ConfigBool* m_dump_use_ffv1;
   ConfigBool* m_use_fullres_framedumps;
-  GraphicsInteger* m_dump_bitrate;
-  GraphicsInteger* m_png_compression_level;
+  ConfigInteger* m_dump_bitrate;
+  ConfigInteger* m_png_compression_level;
 
   // Misc
   ConfigBool* m_enable_cropping;

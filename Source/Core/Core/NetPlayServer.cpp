@@ -169,7 +169,7 @@ NetPlayServer::NetPlayServer(const u16 port, const bool forward_port, NetPlayUI*
     m_chunked_data_thread = std::thread(&NetPlayServer::ChunkedDataThreadFunc, this);
 
 #ifdef USE_UPNP
-    if (forward_port)
+    if (forward_port && !traversal_config.use_traversal)
       Common::UPnP::TryPortmapping(port);
 #endif
   }
@@ -1720,7 +1720,7 @@ std::optional<SaveSyncInfo> NetPlayServer::CollectSaveSyncInfo()
     if (m_settings.savedata_sync_all_wii)
     {
       IOS::HLE::Kernel ios;
-      for (const u64 title : ios.GetES()->GetInstalledTitles())
+      for (const u64 title : ios.GetESCore().GetInstalledTitles())
       {
         auto save = WiiSave::MakeNandStorage(sync_info.configured_fs.get(), title);
         if (save && save->ReadHeader().has_value() && save->ReadBkHeader().has_value() &&

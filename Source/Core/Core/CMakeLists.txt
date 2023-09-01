@@ -59,8 +59,11 @@ add_library(core
   Core.h
   CoreTiming.cpp
   CoreTiming.h
+  CPUThreadConfigCallback.cpp
+  CPUThreadConfigCallback.h
   Debugger/CodeTrace.cpp
   Debugger/CodeTrace.h
+  Debugger/DebugInterface.h
   Debugger/Debugger_SymbolMap.cpp
   Debugger/Debugger_SymbolMap.h
   Debugger/Dump.cpp
@@ -405,6 +408,8 @@ add_library(core
   IOS/USB/Bluetooth/WiimoteHIDAttr.h
   IOS/USB/Common.cpp
   IOS/USB/Common.h
+  IOS/USB/Emulated/Infinity.cpp
+  IOS/USB/Emulated/Infinity.h
   IOS/USB/Emulated/Skylander.cpp
   IOS/USB/Emulated/Skylander.h
   IOS/USB/Host.cpp
@@ -513,6 +518,8 @@ add_library(core
   System.h
   TitleDatabase.cpp
   TitleDatabase.h
+  WC24PatchEngine.cpp
+  WC24PatchEngine.h
   WiiRoot.cpp
   WiiRoot.h
   WiiUtils.cpp
@@ -600,24 +607,23 @@ target_link_libraries(core
 PUBLIC
   audiocommon
   common
-  cubeb
   discio
-  enet
+  enet::enet
   expr
   inputcommon
-  ${MBEDTLS_LIBRARIES}
+  MbedTLS::mbedtls
   pugixml
   RangeSet::RangeSet
   sfml-network
-  sfml-system
   videonull
   videoogl
   videosoftware
 
 PRIVATE
+  cubeb::cubeb
   FatFs
   fmt::fmt
-  ${LZO}
+  LZO::LZO
   ZLIB::ZLIB
 )
 
@@ -641,9 +647,8 @@ elseif (ANDROID)
   )
 endif()
 
-if(LIBUSB_FOUND)
-  # Using shared LibUSB
-  target_link_libraries(core PUBLIC ${LIBUSB_LIBRARIES})
+if(TARGET LibUSB::LibUSB)
+  target_link_libraries(core PUBLIC LibUSB::LibUSB)
   target_sources(core PRIVATE
     IOS/USB/LibusbDevice.cpp
     IOS/USB/LibusbDevice.h

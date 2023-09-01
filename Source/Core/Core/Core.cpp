@@ -41,6 +41,7 @@
 #include "Core/AchievementManager.h"
 #include "Core/Boot/Boot.h"
 #include "Core/BootManager.h"
+#include "Core/CPUThreadConfigCallback.h"
 #include "Core/Config/MainSettings.h"
 #include "Core/ConfigManager.h"
 #include "Core/CoreTiming.h"
@@ -83,10 +84,10 @@
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
 #include "InputCommon/GCAdapter.h"
 
+#include "VideoCommon/Assets/CustomAssetLoader.h"
 #include "VideoCommon/AsyncRequests.h"
 #include "VideoCommon/Fifo.h"
 #include "VideoCommon/FrameDumper.h"
-#include "VideoCommon/HiresTextures.h"
 #include "VideoCommon/OnScreenDisplay.h"
 #include "VideoCommon/PerformanceMetrics.h"
 #include "VideoCommon/Present.h"
@@ -130,6 +131,7 @@ static Common::Event s_cpu_thread_job_finished;
 
 static thread_local bool tls_is_cpu_thread = false;
 static thread_local bool tls_is_gpu_thread = false;
+static thread_local bool tls_is_host_thread = false;
 
 static void EmuThread(std::unique_ptr<BootParameters> boot, WindowSystemInfo wsi);
 
@@ -193,7 +195,7 @@ void DisplayMessage(std::string message, int time_in_ms)
     return;
 
   // Actually displaying non-ASCII could cause things to go pear-shaped
-  if (!std::all_of(message.begin(), message.end(), IsPrintableCharacter))
+  if (!std::all_of(message.begin(), message.end(), Common::IsPrintableCharacter))
     return;
 
   OSD::AddMessage(std::move(message), time_in_ms);
@@ -222,6 +224,11 @@ bool IsCPUThread()
 bool IsGPUThread()
 {
   return tls_is_gpu_thread;
+}
+
+bool IsHostThread()
+{
+  return tls_is_host_thread;
 }
 
 bool WantsDeterminism()
@@ -255,7 +262,7 @@ bool Init(std::unique_ptr<BootParameters> boot, const WindowSystemInfo& wsi)
   Host_UpdateMainFrame();  // Disable any menus or buttons at boot
 
   // Manually reactivate the video backend in case a GameINI overrides the video backend setting.
-  VideoBackendBase::PopulateBackendInfo();
+  VideoBackendBase::PopulateBackendInfo(wsi);
 
   // Issue any API calls which must occur on the main thread for the graphics backend.
   WindowSystemInfo prepared_wsi(wsi);
@@ -336,6 +343,16 @@ void DeclareAsGPUThread()
 void UndeclareAsGPUThread()
 {
   tls_is_gpu_thread = false;
+}
+
+void DeclareAsHostThread()
+{
+  tls_is_host_thread = true;
+}
+
+void UndeclareAsHostThread()
+{
+  tls_is_host_thread = false;
 }
 
 // For the CPU Thread only.
@@ -495,6 +512,9 @@ static void EmuThread(std::unique_ptr<BootParameters> boot, WindowSystemInfo wsi
   DeclareAsCPUThread();
   s_frame_step = false;
 
+  // If settings have changed since the previous run, notify callbacks.
+  CPUThreadConfigCallback::CheckForConfigChanges();
+
   // Switch the window used for inputs to the render window. This way, the cursor position
   // is relative to the render window, instead of the main window.
   ASSERT(g_controller_interface.IsInit());
@@ -519,7 +539,16 @@ static void EmuThread(std::unique_ptr<BootParameters> boot, WindowSystemInfo wsi
 
   Common::ScopeGuard sd_folder_sync_guard{[sync_sd_folder] {
     if (sync_sd_folder && Config::Get(Config::MAIN_ALLOW_SD_WRITES))
-      Common::SyncSDImageToSDFolder([]() { return false; });
+    {
+      const bool sync_ok = Common::SyncSDImageToSDFolder([]() { return false; });
+      if (!sync_ok)
+      {
+        PanicAlertFmtT(
+            "Failed to sync SD card with folder. All changes made this session will be "
+            "discarded on next boot if you do not manually re-issue a resync in Config > "
+            "Wii > SD Card Settings > Convert File to Folder Now!");
+      }
+    }
   }};
 
   // Load Wiimotes - only if we are booting in Wii mode
@@ -529,6 +558,9 @@ static void EmuThread(std::unique_ptr<BootParameters> boot, WindowSystemInfo wsi
   }
 
   FreeLook::LoadInputConfig();
+
+  system.GetCustomAssetLoader().Init();
+  Common::ScopeGuard asset_loader_guard([&system] { system.GetCustomAssetLoader().Shutdown(); });
 
   Movie::Init(*boot);
   Common::ScopeGuard movie_guard{&Movie::Shutdown};
@@ -560,7 +592,7 @@ static void EmuThread(std::unique_ptr<BootParameters> boot, WindowSystemInfo wsi
     system.GetPowerPC().GetDebugInterface().Clear(guard);
   }};
 
-  VideoBackendBase::PopulateBackendInfo();
+  VideoBackendBase::PopulateBackendInfo(wsi);
 
   if (!g_video_backend->Initialize(wsi))
   {
@@ -580,10 +612,6 @@ static void EmuThread(std::unique_ptr<BootParameters> boot, WindowSystemInfo wsi
     PanicAlertFmt("Failed to initialize DSP emulation!");
     return;
   }
-
-  // Inputs loading may have generated custom dynamic textures
-  // it's now ok to initialize any custom textures
-  HiresTexture::Update();
 
   AudioCommon::PostInitSoundStream(system);
 
@@ -663,6 +691,10 @@ static void EmuThread(std::unique_ptr<BootParameters> boot, WindowSystemInfo wsi
     // Join with the CPU thread.
     s_cpu_thread.join();
     INFO_LOG_FMT(CONSOLE, "{}", StopMessage(true, "CPU thread stopped."));
+
+    // Redeclare this thread as the CPU thread, so that the code running in the scope guards doesn't
+    // think we're doing anything unsafe by doing stuff that could race with the CPU thread.
+    DeclareAsCPUThread();
   }
   else  // SingleCore mode
   {
@@ -777,6 +809,7 @@ void SaveScreenShot(std::string_view name)
 static bool PauseAndLock(Core::System& system, bool do_lock, bool unpause_on_unlock)
 {
   // WARNING: PauseAndLock is not fully threadsafe so is only valid on the Host Thread
+
   if (!IsRunningAndStarted())
     return true;
 
@@ -789,10 +822,8 @@ static bool PauseAndLock(Core::System& system, bool do_lock, bool unpause_on_unl
     was_unpaused = system.GetCPU().PauseAndLock(true);
   }
 
-  system.GetExpansionInterface().PauseAndLock(do_lock, false);
-
   // audio has to come after CPU, because CPU thread can wait for audio thread (m_throttle).
-  system.GetDSP().GetDSPEmulator()->PauseAndLock(do_lock, false);
+  system.GetDSP().GetDSPEmulator()->PauseAndLock(do_lock);
 
   // video has to come after CPU, because CPU thread can wait for video thread
   // (s_efbAccessRequested).
@@ -900,6 +931,10 @@ void Callback_NewField(Core::System& system)
       CallOnStateChangedCallbacks(Core::GetState());
     }
   }
+
+#ifdef USE_RETRO_ACHIEVEMENTS
+  AchievementManager::GetInstance()->DoFrame();
+#endif  // USE_RETRO_ACHIEVEMENTS
 }
 
 void UpdateTitle()

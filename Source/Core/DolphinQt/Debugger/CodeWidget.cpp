@@ -9,11 +9,13 @@
 
 #include <QGridLayout>
 #include <QGroupBox>
+#include <QGuiApplication>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
 #include <QSplitter>
+#include <QStyleHints>
 #include <QTableWidget>
 #include <QWidget>
 
@@ -26,7 +28,12 @@
 #include "Core/PowerPC/PowerPC.h"
 #include "Core/System.h"
 #include "DolphinQt/Host.h"
+#include "DolphinQt/QtUtils/SetWindowDecorations.h"
 #include "DolphinQt/Settings.h"
+
+static const QString BOX_SPLITTER_STYLESHEET = QStringLiteral(
+    "QSplitter::handle { border-top: 1px dashed black; width: 1px; margin-left: 10px; "
+    "margin-right: 10px; }");
 
 CodeWidget::CodeWidget(QWidget* parent) : QDockWidget(parent), m_system(Core::System::GetInstance())
 {
@@ -104,9 +111,7 @@ void CodeWidget::CreateWidgets()
   m_search_address->setPlaceholderText(tr("Search Address"));
 
   m_box_splitter = new QSplitter(Qt::Vertical);
-  m_box_splitter->setStyleSheet(QStringLiteral(
-      "QSplitter::handle { border-top: 1px dashed black; width: 1px; margin-left: 10px; "
-      "margin-right: 10px; }"));
+  m_box_splitter->setStyleSheet(BOX_SPLITTER_STYLESHEET);
 
   auto add_search_line_edit = [this](const QString& name, QListWidget* list_widget) {
     auto* widget = new QWidget;
@@ -154,6 +159,13 @@ void CodeWidget::CreateWidgets()
 
 void CodeWidget::ConnectWidgets()
 {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+  connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this,
+          [this](Qt::ColorScheme colorScheme) {
+            m_box_splitter->setStyleSheet(BOX_SPLITTER_STYLESHEET);
+          });
+#endif
+
   connect(m_search_address, &QLineEdit::textChanged, this, &CodeWidget::OnSearchAddress);
   connect(m_search_address, &QLineEdit::returnPressed, this, &CodeWidget::OnSearchAddress);
   connect(m_search_symbols, &QLineEdit::textChanged, this, &CodeWidget::OnSearchSymbols);
@@ -202,6 +214,7 @@ void CodeWidget::OnDiff()
   if (!m_diff_dialog)
     m_diff_dialog = new CodeDiffDialog(this);
   m_diff_dialog->setWindowFlag(Qt::WindowMinimizeButtonHint);
+  SetQWidgetWindowDecorations(m_diff_dialog);
   m_diff_dialog->show();
   m_diff_dialog->raise();
   m_diff_dialog->activateWindow();
