@@ -55,6 +55,8 @@ public final class StartupHandler
         {
           VirtualReality.restoreConfig(parent, extras);
         }
+        if (DirectoryInitialization.shouldStart(parent.getApplicationContext()))
+          DirectoryInitialization.start(parent.getApplicationContext());
       }
 
       // Start the emulation activity, send the ISO passed in and finish the main activity
