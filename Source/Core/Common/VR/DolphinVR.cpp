@@ -26,7 +26,7 @@ void OXR_CheckErrors(XrResult result, const char* function)
   }
 }
 
-static void (*UpdateInput)(int id, int l, int r, float x, float y, float jx, float jy);
+static void (*UpdateInput)(int id, int l, int r, float x, float y, float jlx, float jly, float jrx, float jry);
 
 /*
 ================================================================================
@@ -73,6 +73,7 @@ void InitOnAndroid(JNIEnv* env, jobject obj, const char* vendor, int version, co
   s_module_input = new Input();
   s_module_renderer = new Renderer();
   s_platform_flags[PLATFORM_STATUS_INITIALIZED] = true;
+  s_module_renderer->SetConfigFloat(CONFIG_CANVAS_DISTANCE, 4.0f);
 
   // Get Java VM
   JavaVM* vm;
@@ -101,7 +102,7 @@ void GetResolutionPerEye(int* width, int* height)
   }
 }
 
-void SetCallback(void (*callback)(int id, int l, int r, float x, float y, float jx, float jy))
+void SetCallback(void (*callback)(int id, int l, int r, float x, float y, float jlx, float jly, float jrx, float jry))
 {
   UpdateInput = callback;
 }
@@ -144,20 +145,31 @@ bool StartRender()
   if (s_module_renderer->InitFrame(engine))
   {
     // Set render canvas
-    s_module_renderer->SetConfigFloat(CONFIG_CANVAS_DISTANCE, 4.0f);
     s_module_renderer->SetConfigFloat(CONFIG_CANVAS_ASPECT, 16.0f / 9.0f / 2.0f);
     s_module_renderer->SetConfigInt(CONFIG_MODE, RENDER_MODE_MONO_SCREEN);
 
-    // Update controllers
+    // Get controllers state
     s_module_input->Update(engine);
     auto pose = s_module_input->GetPose(1);
     int l = s_module_input->GetButtonState(0);
     int r = s_module_input->GetButtonState(1);
-    auto joystick = s_module_input->GetJoystickState(0);
+    auto joy_l = s_module_input->GetJoystickState(0);
+    auto joy_r = s_module_input->GetJoystickState(1);
     auto angles = EulerAngles(pose.orientation);
     float x = -tan(ToRadians(angles.y - s_module_renderer->GetConfigFloat(CONFIG_MENU_YAW)));
     float y = -tan(ToRadians(angles.x)) * s_module_renderer->GetConfigFloat(CONFIG_CANVAS_ASPECT);
-    UpdateInput(0, l, r, x, y, joystick.x, joystick.y);
+
+    // Change canvas distance
+    if (l & (int)Button::Grip)
+	{
+      float value = s_module_renderer->GetConfigFloat(CONFIG_CANVAS_DISTANCE);
+	  value += s_module_input->GetJoystickState(1).y * 0.1f;
+	  value = std::clamp(value, 1.0f, 8.0f);
+      s_module_renderer->SetConfigFloat(CONFIG_CANVAS_DISTANCE, value);
+    }
+
+	// Update game
+    UpdateInput(0, l, r, x, y, joy_l.x, joy_l.y, joy_r.x, joy_r.y);
     return true;
   }
   return false;
