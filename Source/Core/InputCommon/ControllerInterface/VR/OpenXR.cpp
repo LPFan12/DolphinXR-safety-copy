@@ -56,8 +56,8 @@ void UpdateInput(int id, int l, int r, float x, float y, float jlx, float jly, f
   SetControlState(id, Touch::GCPAD_START_BUTTON, r & (int)Button::RThumb ? 1 : 0);
 
   // Left controller to WiiMote + Nunchuk
-  SetControlState(id, Touch::WIIMOTE_PLUS_BUTTON, l & (int)Button::X ? 1 : 0);
-  SetControlState(id, Touch::WIIMOTE_MINUS_BUTTON, l & (int)Button::Y ? 1 : 0);
+  SetControlState(id, Touch::WIIMOTE_ONE_BUTTON, l & (int)Button::X ? 1 : 0);
+  SetControlState(id, Touch::WIIMOTE_TWO_BUTTON, l & (int)Button::Y ? 1 : 0);
   SetControlState(id, Touch::WIIMOTE_HOME_BUTTON, l & (int)Button::Back ? 1 : 0);
   SetControlState(id, Touch::NUNCHUK_C_BUTTON, l & (int)Button::Trigger ? 1 : 0);
   SetControlState(id, Touch::NUNCHUK_Z_BUTTON, l & (int)Button::Grip ? 1 : 0);
@@ -67,8 +67,8 @@ void UpdateInput(int id, int l, int r, float x, float y, float jlx, float jly, f
   // Right controller to WiiMote
   SetControlState(id, Touch::WIIMOTE_A_BUTTON, r & (int)Button::Trigger ? 1 : 0);
   SetControlState(id, Touch::WIIMOTE_B_BUTTON, r & (int)Button::Grip ? 1 : 0);
-  SetControlState(id, Touch::WIIMOTE_ONE_BUTTON, r & (int)Button::A ? 1 : 0);
-  SetControlState(id, Touch::WIIMOTE_TWO_BUTTON, r & (int)Button::B ? 1 : 0);
+  SetControlState(id, Touch::WIIMOTE_PLUS_BUTTON, r & (int)Button::A ? 1 : 0);
+  SetControlState(id, Touch::WIIMOTE_MINUS_BUTTON, r & (int)Button::B ? 1 : 0);
   SetControlState(id, Touch::WIIMOTE_DPAD_UP, r & (int)Button::Up ? 1 : 0);
   SetControlState(id, Touch::WIIMOTE_DPAD_DOWN, r & (int)Button::Down ? 1 : 0);
   SetControlState(id, Touch::WIIMOTE_DPAD_LEFT, r & (int)Button::Left ? 1 : 0);

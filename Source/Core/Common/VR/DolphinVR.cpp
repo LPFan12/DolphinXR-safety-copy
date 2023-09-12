@@ -123,6 +123,30 @@ void Start(bool firstStart)
 /*
 ================================================================================
 
+VR state
+
+================================================================================
+*/
+
+void GetControllerOrientation(int index, float& pitch, float& yaw, float& roll)
+{
+  auto angles = EulerAngles(s_module_input->GetPose(index).orientation);
+  pitch = ToRadians(angles.x);
+  yaw = ToRadians(angles.y);
+  roll = ToRadians(angles.z);
+}
+
+void GetControllerTranslation(int index, float& x, float& y, float& z)
+{
+  auto pos = s_module_input->GetPose(index).position;
+  x = -pos.x;
+  y = pos.y * 0.5f;
+  z = pos.z;
+}
+
+/*
+================================================================================
+
 VR rendering integration
 
 ================================================================================
