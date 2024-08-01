@@ -92,6 +92,9 @@ void Renderer::GetResolution(Base* engine, int* pWidth, int* pHeight)
     *pWidth = width;
     *pHeight = height;
   }
+
+  *pWidth *= 1.3f;
+  *pHeight *= 1.3f;
 }
 
 void Renderer::Init(Base* engine)
@@ -134,10 +137,15 @@ void Renderer::Init(Base* engine)
   }
 
   m_projections = (XrView*)(malloc(MaxNumEyes * sizeof(XrView)));
+  for (int eye = 0; eye < 2; eye++)
+  {
+    memset(&m_projections[eye], 0, sizeof(XrView));
+      m_projections[eye].type = XR_TYPE_VIEW;
+  }
 
   // Create framebuffers.
-  int width = m_view_config[0].recommendedImageRectWidth;
-  int height = m_view_config[0].recommendedImageRectHeight;
+  int width, height;
+  GetResolution(engine, &width, &height);
   for (int i = 0; i < MaxNumEyes; i++)
   {
     m_framebuffer[i].Create(engine->GetSession(), width, height);
@@ -172,15 +180,6 @@ bool Renderer::InitFrame(Base* engine)
 
   engine->WaitForFrame();
 
-  // Get the HMD pose, predicted for the middle of the time period during which
-  // the new eye images will be displayed. The number of frames predicted ahead
-  // depends on the pipeline depth of the engine and the synthesis rate.
-  // The better the prediction, the less black will be pulled in at the edges.
-  XrFrameBeginInfo begin_frame_info = {};
-  begin_frame_info.type = XR_TYPE_FRAME_BEGIN_INFO;
-  begin_frame_info.next = NULL;
-  OXR(xrBeginFrame(engine->GetSession(), &begin_frame_info));
-
   XrViewLocateInfo projection_info = {};
   projection_info.type = XR_TYPE_VIEW_LOCATE_INFO;
   projection_info.viewConfigurationType = m_viewport_config.viewConfigurationType;
@@ -195,6 +194,15 @@ bool Renderer::InitFrame(Base* engine)
   OXR(xrLocateViews(engine->GetSession(), &projection_info, &view_state, projection_capacity,
                     &projection_count, m_projections));
   //
+
+  // Get the HMD pose, predicted for the middle of the time period during which
+  // the new eye images will be displayed. The number of frames predicted ahead
+  // depends on the pipeline depth of the engine and the synthesis rate.
+  // The better the prediction, the less black will be pulled in at the edges.
+  XrFrameBeginInfo begin_frame_info = {};
+  begin_frame_info.type = XR_TYPE_FRAME_BEGIN_INFO;
+  begin_frame_info.next = NULL;
+  OXR(xrBeginFrame(engine->GetSession(), &begin_frame_info));
 
   m_fov = {};
   for (int eye = 0; eye < MaxNumEyes; eye++)
@@ -293,8 +301,8 @@ void Renderer::FinishFrame(Base* engine)
     cylinder_layer.subImage.imageArrayIndex = 0;
     cylinder_layer.pose.orientation = Multiply(pitch, yaw);
     cylinder_layer.pose.position = pos;
-    cylinder_layer.radius = 6.0f;
-    cylinder_layer.centralAngle = (float)(M_PI * 0.5);
+    cylinder_layer.radius = 3.0f;
+    cylinder_layer.centralAngle = (float)(M_PI * 0.33) * 4.0f;
     cylinder_layer.aspectRatio = GetConfigFloat(CONFIG_CANVAS_ASPECT);
 
     // Build the cylinder layer
